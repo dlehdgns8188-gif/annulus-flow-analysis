@@ -81,10 +81,12 @@ python -m unittest discover -s tests -v
 ## GitHub에 포함할 파일
 
 - `app.py`, `flow.py`, `analysis.py`, `main.py`
+- `education.py` (메뉴별 계산 원리와 이론 유도 표시)
 - `requirements.txt`, `requirements-web.txt`
 - `README.md`, `웹사용법.md`
 - `실행.bat`, `웹실행.bat`
 - `tests/test_web_app.py`, `tests/test_release.py`, `tests/test_numerical_verification.py`
+- `tests/test_education.py`
 - `.gitignore`, `.streamlit/config.toml`, `.github/workflows/tests.yml`
 
 이 목록의 소스·설정·문서만 업로드하면 됩니다. `.venv/`, `__pycache__/`, `tmp/`, `results/`, `.env*`, `.streamlit/secrets.toml`, 개인 설정·인증서·로그·개인 문서·수업 PDF는 제외합니다. CSV 다운로드는 메모리에서 만들어지므로 기존 결과 파일은 웹 배포에 필요하지 않습니다.

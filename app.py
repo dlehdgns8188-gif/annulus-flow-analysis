@@ -10,6 +10,7 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
+from education import show_principles, show_theory_details, SPEED, FLOW
 
 from analysis import (
     analyze_basic_flow,
@@ -25,11 +26,11 @@ APP_TITLE = "동심 이중관(Annulus) 층류 유동 해석 프로그램"
 APP_SUBTITLE = "화공유체역학 팀프로젝트 | 유체역학 10조"
 APP_FOOTER = "유체역학 10조 · Annulus Flow Analysis"
 PAGE_DESCRIPTIONS = dict(zip(PAGES, [
-    "유체의 물성, 관의 크기, 압력차를 입력하여 이중관 내부의 속도분포, 전단응력, 유량 등을 계산하고 유동 특성을 분석합니다.",
-    "내반지름과 외반지름의 비율(Ri/Ro)을 변화시키면서 유량과 최대속도가 어떻게 달라지는지 비교합니다.",
-    "원하는 유량을 얻기 위해 필요한 내반지름(Ri)을 역으로 계산합니다.",
-    "목표 유량을 만족하는 내반지름을 계산하고, 벽면 전단응력이 허용 기준을 만족하는지 평가합니다.",
-    "수치계산 결과를 해석식 및 원관 극한조건과 비교하여 계산의 정확성과 물리적 타당성을 확인합니다.",
+    "동심 이중관의 형상, 유체 물성 및 압력강하를 입력하여 관 내부의 유속분포, 전단응력분포, 최대유속, 평균유속 및 체적유량을 계산합니다.",
+    "외관 반지름을 고정하고 내관 반지름을 변화시켜 형상비 Ri/Ro에 따른 유량과 유속 변화를 분석합니다.",
+    "목표 체적유량을 입력하면 해당 유량을 만족하는 내관 반지름 Ri를 수치적으로 탐색합니다.",
+    "목표유량을 만족하는 내관 반지름을 구하고, 해당 조건에서 내·외벽 전단응력이 허용 기준 이내인지 판정합니다.",
+    "계산된 유동 결과가 이론식 및 경계조건과 일치하는지 확인하고, 수치계산의 정확성을 검증합니다.",
 ]))
 DEFAULTS = {"rho": 1000.0, "mu": 0.1, "L": 1.0, "Ri": 0.005,
             "Ro": 0.010, "DeltaP": 100.0, "Q_target": 4.947381662033e-07,
@@ -255,12 +256,23 @@ def show_basic(result):
         frame = pd.DataFrame({"반지름 r [m]": result["r"], "속도 u [m/s]": result["u"]})
         line_plot(frame, *frame.columns, point=(result["r_max"], result["u_max"]))
         st.caption("주황색 점: 최대속도 위치")
+        st.caption("고정된 양쪽 벽에서는 no-slip으로 유속이 0이며, 내부에 최대유속이 나타납니다. 주황색 점은 속도구배가 0인 위치입니다.")
+        with st.expander("속도분포 계산식"):
+            st.latex(SPEED)
+            st.caption("압력구배와 점성력의 평형에 양쪽 벽의 속도 조건을 적용한 식입니다. C는 로그항의 계수입니다.")
     with right:
         st.subheader("전단응력분포")
         frame = pd.DataFrame({"반지름 r [m]": result["r"], "전단응력 τ [Pa]": result["tau"]})
         line_plot(frame, *frame.columns, point=(result["r_max"], result["tau_at_max"]))
         st.caption("주황색 점: 최대속도 위치에서의 전단응력")
-    show_numerical_verification(result)
+        st.latex(r"\tau_{rz}(r)=\mu\frac{du}{dr}")
+        st.caption("전단응력은 속도구배에 비례합니다. 현재 양의 압력차에서는 내벽의 속도구배가 양수, 외벽은 음수이며, 최대속도 위치에서 0이 됩니다.")
+    with st.expander("체적유량과 평균유속 계산식"):
+        st.latex(FLOW)
+        st.latex(r"V=\frac{Q}{\pi(R_o^2-R_i^2)}")
+        st.caption("속도를 환형 단면 전체에 적분해 Q를 구하고 유동 단면적으로 나누어 V를 구합니다.")
+    with st.expander("계산 결과 검증 보고서"):
+        show_numerical_verification(result)
 
 
 def near_zero_text(row):
@@ -376,34 +388,38 @@ def show_sweep(table):
                                        "u_max [m/s]", "r_max [m]"])
     decreasing = np.all(np.diff(table[:, 2]) < 0) and np.all(np.diff(table[:, 4]) < 0)
     if decreasing:
-        st.success("형상비가 증가할수록 유량과 최대속도가 모두 감소합니다. 내부 관이 굵어지면서 간극이 좁아집니다.")
+        st.success("이번 계산의 고정조건(Ro, μ, L, ΔP)에서 형상비가 증가할수록 유량과 최대속도가 모두 감소했습니다.")
     else:
         st.warning("계산 결과가 단조 감소하지 않습니다. 입력 조건과 수치 정밀도를 확인하세요.")
     left, right = st.columns(2)
     with left:
         st.subheader("형상비에 따른 유량")
         line_plot(frame, "형상비 Ri/Ro", "Q [m³/s]")
+        st.caption(f"이번 30조건에서 Q는 {format_quantity(table[0,2], 'm³/s')} → {format_quantity(table[-1,2], 'm³/s')}입니다. 압력차와 점도가 같은 조건에서 간극 감소가 유동 저항을 높인 결과로 해석합니다." if decreasing else "Q의 변화는 이번에 지정한 고정조건에서 해석해야 합니다. 표의 수치와 계산 상태를 함께 확인하세요.")
     with right:
         st.subheader("형상비에 따른 최대속도")
         line_plot(frame, "형상비 Ri/Ro", "u_max [m/s]")
+        st.caption(f"이번 30조건에서 최대유속은 {format_quantity(table[0,4], 'm/s')} → {format_quantity(table[-1,4], 'm/s')}입니다. 다른 압력차·점도·설계 조건에서도 같은 비교가 된다고 일반화하지 않습니다.")
     download_table(frame, "parameter_sweep.csv")
     display_table(frame)
     st.caption("Q: 단위시간당 통과하는 체적 · u_max: 단면 최대유속 · Ri/Ro: 내·외반지름의 비율. 표는 6자리 유효숫자, CSV는 기존 원본 정밀도를 유지합니다.")
 
 
-def show_design(payload, with_shear):
+def show_design(payload, with_shear, values):
     result, message = payload
     if result is None:
         st.warning(message)
         return
     st.subheader("역설계 결과")
-    metrics([("내반지름 Ri [m]", result["Ri"], False),
+    metrics([("목표 체적유량 Q_target [m³/s]", values['Q_target'], True),
+             ("내반지름 Ri [m]", result["Ri"], False),
              ("형상비 Ri/Ro", result["k"], False),
              ("간극 Ro − Ri [m]", result["gap"], False),
              ("실제 체적유량 Q [m³/s]", result["Q"], True),
              ("목표유량 상대오차 [%]", result["relative_error"] * 100, True)])
     if not with_shear:
         st.success(message)
+        st.write("목표유량에 대응하는 내관 반지름을 찾은 결과입니다. 실제 Q는 찾은 Ri로 다시 계산한 값이며, 상대오차는 목표값과의 일치 정도를 나타냅니다. 전단응력 제한이나 층류 조건까지 만족한다는 판정은 아닙니다.")
         return
     metrics([("내벽 전단응력 [Pa]", result["tau_inner"], False),
              ("외벽 전단응력 [Pa]", result["tau_outer"], False),
@@ -411,11 +427,13 @@ def show_design(payload, with_shear):
              ("허용 전단응력 [Pa]", result["tau_allow"], False)])
     if result["passed"]:
         st.success(message)
+        st.write(f"목표유량 오차 조건을 만족하고, 최대 벽면 전단응력 {format_quantity(result['tau_wall_max'], 'Pa')}가 허용값 {format_quantity(result['tau_allow'], 'Pa')} 이하입니다.")
     else:
         st.error(message)
         st.write(f"허용 전단응력 초과량: **{format_quantity(result['excess'], 'Pa')}**")
     st.caption("판정: 양쪽 벽 전단응력의 절댓값 중 큰 값 ≤ 허용값. 이 PASS는 유량·전단응력 조건에 대한 판정입니다.")
     st.caption("전단응력의 부호는 좌표계와 정의에 따른 방향 정보이며, 설계 허용치 판정에는 절댓값을 사용합니다.")
+    st.caption("고정된 Ro, μ, L, ΔP에서 목표유량 해를 찾은 뒤 적합성을 평가합니다. FAIL인 경우 조건을 바꾸어 새로운 가능 해를 자동 탐색하는 최적화 기능은 아닙니다.")
 
 
 def show_verification(report):
@@ -460,6 +478,10 @@ def main():
         [data-testid="stMetricValue"] {font-size: 1.45rem; color: #075965;
             white-space: normal; overflow-wrap: anywhere;}
         [data-testid="stSidebar"] {background: #eaf1f5;}
+        [data-testid="stLatex"] {overflow-x: auto; max-width: 100%;}
+        @media (max-width: 600px) {
+            h1 {font-size: 1.9rem !important; line-height: 1.35 !important; word-break: keep-all;}
+        }
         </style>""", unsafe_allow_html=True)
     with st.sidebar:
         st.title("Annulus")
@@ -476,6 +498,7 @@ def main():
     st.divider()
     st.header(page)
     st.write(PAGE_DESCRIPTIONS[page])
+    show_principles(page)
     submitted, values = input_form(page)
     if submitted:
         st.session_state.pop("computed", None)
@@ -488,6 +511,7 @@ def main():
     if "computed" not in st.session_state:
         if not submitted:
             st.info("기본값으로 바로 계산하거나 입력 조건을 바꾼 뒤 ‘계산 실행’을 누르세요.")
+        show_theory_details(page)
         show_footer()
         return
     snapshot, result = st.session_state["computed"]
@@ -501,9 +525,10 @@ def main():
     elif page == PAGES[1]:
         show_sweep(result)
     elif page in (PAGES[2], PAGES[3]):
-        show_design(result, with_shear=page == PAGES[3])
+        show_design(result, with_shear=page == PAGES[3], values=snapshot)
     else:
         show_verification(result)
+    show_theory_details(page)
     show_footer()
 
 
