@@ -33,7 +33,7 @@ class WebAppTests(unittest.TestCase):
         result = app.session_state["computed"][1]
         self.assertAlmostEqual(result["Q"], 4.947381662033e-07, places=18)
         self.assertAlmostEqual(result["Re"], .2099733991666, places=12)
-        self.assertEqual(len(app.metric), 8)
+        self.assertGreaterEqual(len(app.metric), 8)  # 주요 8개 결과와 접힌 상세 검증값
         self.assertEqual(len(app.get("vega_lite_chart")) + len(app.get("arrow_vega_lite_chart")), 2)
         self.assertTrue(result["walls_ok"] and result["shear_zero_ok"])
         self.assertEqual(app.metric[0].value, "4.94738 × 10⁻⁷ m³/s")

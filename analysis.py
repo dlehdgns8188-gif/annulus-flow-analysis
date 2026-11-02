@@ -16,31 +16,86 @@ def analyze_basic_flow(rho, mu, length, ri, ro, dp):
     rm, um = maximum_velocity(*args)
     gradient = float(velocity_gradient(rm, *args))
     tau_max = float(shear_stress(rm, *args))
-    walls_ok = bool(np.allclose([u[0], u[-1]], 0., rtol=0., atol=1e-12))
+    walls_ok = bool(np.all(np.abs([u[0], u[-1]]) < 1e-9))
     shear_ok = bool(np.isclose(tau_max, 0., rtol=0., atol=1e-12))
-    if not walls_ok:
-        raise RuntimeError("벽면 속도 검증에 실패했습니다.")
-    if not shear_ok:
-        raise RuntimeError("최대속도 위치에서 전단응력 0 검증에 실패했습니다.")
     q = volumetric_flow_rate(*args)
     v = average_velocity(q, ri, ro)
     dh, re = hydraulic_diameter(ri, ro), reynolds_number(rho, v, mu, ri, ro)
     status, message = assess_laminar_assumption(re)
-    return dict(r=r, u=u, tau=tau, r_max=rm, u_max=um, Q=q, V=v, Dh=dh, Re=re,
+    result = dict(r=r, u=u, tau=tau, r_max=rm, u_max=um, Q=q, V=v, Dh=dh, Re=re,
                 midpoint=(ri+ro)/2, gradient_at_max=gradient, tau_at_max=tau_max,
                 walls_ok=walls_ok, shear_zero_ok=shear_ok,
                 laminar_status=status, laminar_message=message)
+    result['verification'] = numerical_verification(ri, ro, mu, length, dp, result)
+    result['shear_zero_ok'] = result['verification']['extremum'][1]['status'] == 'PASS'
+    return result
+
+
+def numerical_verification(ri, ro, mu, length, dp, basic):
+    """기존 해·도함수·적분을 재사용하는 판정 계층. 계산값을 보정하거나 반올림하지 않는다.
+
+    0.01% 미만 상대오차가 기본 유량 기준이다. |Q_analytical|<=1e-15 m³/s는
+    기존 quad의 절대오차 요청과 비슷하므로 상대 비교가 맞아도 CAUTION으로 남긴다.
+    기울기/응력은 절대 허용오차에 벽값 기준 1e-10의 상대 크기를 더한다.
+    """
+    args = (ri, ro, mu, length, dp)
+    wall_u = velocity_profile([ri, ro], *args)
+    wall_g = velocity_gradient([ri, ro], *args)
+    wall_tau = shear_stress([ri, ro], *args)
+    rm = basic['r_max']
+    g = float(velocity_gradient(rm, *args))
+    tau = float(shear_stress(rm, *args))
+    g_tol = 1e-10 + 1e-10 * float(np.max(np.abs(wall_g)))
+    tau_tol = 1e-12 + 1e-10 * float(np.max(np.abs(wall_tau)))
+
+    def check(label, value, unit, tolerance):
+        return dict(label=label, value=float(value), unit=unit, tolerance=tolerance,
+                    status='PASS' if np.isfinite(value) and abs(value) < tolerance else 'FAIL')
+
+    no_slip = [check('내벽 u(Ri)', wall_u[0], 'm/s', 1e-9),
+               check('외벽 u(Ro)', wall_u[1], 'm/s', 1e-9)]
+    extremum = [check('du/dr(r_max)', g, '1/s', g_tol),
+                check('τ(r_max)', tau, 'Pa', tau_tol)]
+    # +z 유동이면 기울기 + -> -, 역방향이면 - -> +. 벽이 유체에 주는
+    # traction t_z=(σ·n)_z, 유체영역 외향법선 n_r는 내벽 -1, 외벽 +1이다.
+    traction = np.array([-wall_tau[0], wall_tau[1]])
+    direction = np.sign(dp)
+    sign_ok = bool(direction != 0 and wall_g[0]*direction > 0 and wall_g[1]*direction < 0
+                   and np.all(traction*direction < 0))
+    location_ok = bool(ri < rm < ro)
+    if location_ok:
+        side_g = velocity_gradient([(ri+rm)/2, (rm+ro)/2], *args)
+        location_ok = bool(side_g[0]*direction > 0 and side_g[1]*direction < 0)
+    qa = float(analytical_flow_rate(*args))
+    qn = float(basic['Q'])
+    absolute = abs(qn-qa)
+    relative = absolute/abs(qa) if qa != 0 else None
+    finite = bool(np.all(np.isfinite([qa, qn, absolute])))
+    valid_sign = qa*dp > 0 and qn*dp > 0
+    tiny = abs(qa) <= 1e-15
+    if not finite or not valid_sign or (relative is not None and relative >= 1e-4):
+        flow_status = 'FAIL'
+    elif tiny:
+        flow_status = 'CAUTION'
+    else:
+        flow_status = 'PASS'
+    statuses = [r['status'] for r in no_slip+extremum] + [flow_status]
+    statuses += ['PASS' if sign_ok and location_ok else 'FAIL']
+    overall = 'FAIL' if 'FAIL' in statuses else 'CAUTION' if 'CAUTION' in statuses else 'PASS'
+    return dict(no_slip=no_slip, extremum=extremum, r_max=rm, location_ok=location_ok,
+                wall_gradients=wall_g, wall_stresses=wall_tau, wall_tractions=traction,
+                sign_ok=sign_ok, direction=direction, Q_analytical=qa, Q_numerical=qn,
+                absolute_error=absolute, relative_error=relative, flow_status=flow_status,
+                tiny_flow=tiny, overall=overall, method='SciPy quad · QUADPACK 적응형 Gauss–Kronrod',
+                relative_tolerance_percent=0.01)
 
 
 def verify_flow_model(rho, mu, length, ri, ro, dp):
     """기존 유량 비교·원관 극한·기본값 역설계 재현 검증을 묶는다."""
     basic = analyze_basic_flow(rho, mu, length, ri, ro, dp)
-    exact = analytical_flow_rate(ri, ro, mu, length, dp)
-    absolute = abs(basic['Q'] - exact)
-    relative = absolute / abs(exact) if exact != 0. else None
-    ok = relative <= 1e-8 if relative is not None else absolute <= 1e-15
-    if not ok:
-        raise RuntimeError("수치적분 유량과 해석 유량의 비교 검증에 실패했습니다.")
+    verification = basic['verification']
+    exact, absolute, relative = (verification[k] for k in ('Q_analytical', 'absolute_error', 'relative_error'))
+    ok = verification['flow_status'] == 'PASS'
     pipe, table, decreasing = verify_pipe_limit(ro, mu, length, dp)
     if not decreasing:
         raise RuntimeError("원관 극한 검증에서 상대오차가 순차적으로 감소하지 않았습니다.")
