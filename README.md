@@ -38,6 +38,8 @@ app.py ──→ analysis.py ──→ flow.py ──→ NumPy / SciPy
 
 `app.py`는 물리식을 복제하지 않고 기존 계산 함수를 호출합니다. `실행.bat`는 `main.py`, `웹실행.bat`는 `app.py`를 실행합니다. 배치파일은 Windows 편의 기능이며 Linux 웹 배포에서 사용하지 않습니다.
 
+교육용 애니메이션은 `web_animations.py`가 기존 계산값을 준비하고 `animation_view.html`이 브라우저 Canvas로 재생합니다. 기본 해석의 입자 속도는 실제 u(r)에 비례하며, 8초 주기와 입자 재생 배율은 실제 유속·물리 경과시간과 구분해 표시합니다. 양쪽 벽의 점은 정지하고 r_max를 표시합니다. 형상비 애니메이션은 기존 Sweep의 30개 정상상태를 차례로 비교하며 관 변형 중의 비정상 유동 계산은 아닙니다. 재생·일시정지, 프레임 이동을 지원하고 외부 CDN이나 새 라이브러리는 사용하지 않습니다.
+
 ## 로컬 설치 및 웹 실행
 
 Python **3.12**를 권장합니다. 저장소를 내려받은 프로젝트 폴더에서 실행하세요.
@@ -81,10 +83,12 @@ python -m unittest discover -s tests -v
 ## GitHub에 포함할 파일
 
 - `app.py`, `flow.py`, `analysis.py`, `main.py`
+- `web_animations.py`, `animation_view.html` (애니메이션 화면에 필요)
 - `requirements.txt`, `requirements-web.txt`
 - `README.md`, `웹사용법.md`
 - `실행.bat`, `웹실행.bat`
 - `tests/test_web_app.py`, `tests/test_release.py`, `tests/test_numerical_verification.py`
+- `tests/test_animations.py`
 - `.gitignore`, `.streamlit/config.toml`, `.github/workflows/tests.yml`
 
 이 목록의 소스·설정·문서만 업로드하면 됩니다. `.venv/`, `__pycache__/`, `tmp/`, `results/`, `.env*`, `.streamlit/secrets.toml`, 개인 설정·인증서·로그·개인 문서·수업 PDF는 제외합니다. CSV 다운로드는 메모리에서 만들어지므로 기존 결과 파일은 웹 배포에 필요하지 않습니다.

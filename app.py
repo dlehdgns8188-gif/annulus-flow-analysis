@@ -10,6 +10,8 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
+import streamlit.components.v1 as components
+from web_animations import basic_animation_data, sweep_animation_data, animation_html
 
 from analysis import (
     analyze_basic_flow,
@@ -234,7 +236,15 @@ def laminar_status(result):
     st.caption("원관 기준을 참고한 수력직경 기반 예비 판정입니다. Annulus의 정확한 전이 기준이 아니며, 형상비·입구 교란에 따라 달라집니다. 정상·Newtonian·완전발달 가정은 별도 확인이 필요합니다.")
 
 
-def show_basic(result):
+def render_animation(data):
+    html = animation_html(data)
+    if hasattr(st, 'iframe'):
+        st.iframe(html, height='content', alt='Annulus 교육용 유동 애니메이션')
+    else:  # 이전 Streamlit 설치 환경과의 호환성을 유지한다.
+        components.html(html, height=850 if data['mode']=='basic' else 1000, scrolling=True)
+
+
+def show_basic(result, values):
     st.subheader("주요 결과")
     metrics([
         ("체적유량 Q [m³/s]", result["Q"], True),
@@ -260,6 +270,8 @@ def show_basic(result):
         frame = pd.DataFrame({"반지름 r [m]": result["r"], "전단응력 τ [Pa]": result["tau"]})
         line_plot(frame, *frame.columns, point=(result["r_max"], result["tau_at_max"]))
         st.caption("주황색 점: 최대속도 위치에서의 전단응력")
+    st.subheader("교육용 애니메이션 · 속도분포와 전단응력")
+    render_animation(basic_animation_data(result, values))
     show_numerical_verification(result)
 
 
@@ -369,7 +381,7 @@ def download_table(frame, filename, label="전체 결과 CSV 다운로드"):
                        file_name=filename, mime="text/csv")
 
 
-def show_sweep(table):
+def show_sweep(table, values):
     st.subheader("형상비 30조건 분석 결과")
     st.caption("Ro, μ, L, ΔP를 고정하고 형상비 Ri/Ro를 0.1에서 0.9까지 변화시켰습니다.")
     frame = pd.DataFrame(table, columns=["형상비 Ri/Ro", "Ri [m]", "Q [m³/s]", "V [m/s]",
@@ -389,6 +401,8 @@ def show_sweep(table):
     download_table(frame, "parameter_sweep.csv")
     display_table(frame)
     st.caption("Q: 단위시간당 통과하는 체적 · u_max: 단면 최대유속 · Ri/Ro: 내·외반지름의 비율. 표는 6자리 유효숫자, CSV는 기존 원본 정밀도를 유지합니다.")
+    st.subheader("교육용 애니메이션 · 형상비와 유량")
+    render_animation(sweep_animation_data(table, values))
 
 
 def show_design(payload, with_shear):
@@ -497,9 +511,9 @@ def main():
                                    "입력값": [format_number(v) + (f" m / {format_number(v * 1000)} mm" if k in ("Ri", "Ro", "L") else "") for k, v in snapshot.items()]}),
                      hide_index=True, width="stretch")
     if page == PAGES[0]:
-        show_basic(result)
+        show_basic(result, snapshot)
     elif page == PAGES[1]:
-        show_sweep(result)
+        show_sweep(result, snapshot)
     elif page in (PAGES[2], PAGES[3]):
         show_design(result, with_shear=page == PAGES[3])
     else:
