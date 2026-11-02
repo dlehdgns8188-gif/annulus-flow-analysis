@@ -12,15 +12,15 @@ class EducationTests(unittest.TestCase):
             app=AppTest.from_file(str(APP),default_timeout=30).run()
             if i:app.radio[0].set_value(app.radio[0].options[i]).run()
             self.assertFalse(app.exception)
-            self.assertTrue(any(h.value=='계산 원리' for h in app.subheader))
-            self.assertTrue(any(e.label=='상세 이론 및 유도 과정' for e in app.expander))
+            theory=next(e for e in app.expander if e.label=='상세 이론 및 계산식')
+            self.assertEqual(len(app.latex),len(theory.latex))
             self.assertGreater(len(app.latex),2)
             app.button[0].click().run()
             self.assertFalse(app.exception)
             if i in (2,3):
                 self.assertTrue(any(m.label.startswith('목표 체적유량') for m in app.metric))
             if i==1:
-                self.assertTrue(any('Sweep 표에 전단응력이 포함된 것은 아닙니다' in c.value for c in app.caption))
+                self.assertTrue(any('전단응력 비교는 포함하지 않습니다' in c.value for c in app.caption))
             if i==3:
                 self.assertTrue(any('최적화 기능은 아닙니다' in c.value for c in app.caption))
 

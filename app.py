@@ -10,7 +10,7 @@ import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
-from education import show_principles, show_theory_details, SPEED, FLOW
+from education import show_principles, show_theory_details
 
 from analysis import (
     analyze_basic_flow,
@@ -257,20 +257,12 @@ def show_basic(result):
         line_plot(frame, *frame.columns, point=(result["r_max"], result["u_max"]))
         st.caption("주황색 점: 최대속도 위치")
         st.caption("고정된 양쪽 벽에서는 no-slip으로 유속이 0이며, 내부에 최대유속이 나타납니다. 주황색 점은 속도구배가 0인 위치입니다.")
-        with st.expander("속도분포 계산식"):
-            st.latex(SPEED)
-            st.caption("압력구배와 점성력의 평형에 양쪽 벽의 속도 조건을 적용한 식입니다. C는 로그항의 계수입니다.")
     with right:
         st.subheader("전단응력분포")
         frame = pd.DataFrame({"반지름 r [m]": result["r"], "전단응력 τ [Pa]": result["tau"]})
         line_plot(frame, *frame.columns, point=(result["r_max"], result["tau_at_max"]))
         st.caption("주황색 점: 최대속도 위치에서의 전단응력")
-        st.latex(r"\tau_{rz}(r)=\mu\frac{du}{dr}")
         st.caption("전단응력은 속도구배에 비례합니다. 현재 양의 압력차에서는 내벽의 속도구배가 양수, 외벽은 음수이며, 최대속도 위치에서 0이 됩니다.")
-    with st.expander("체적유량과 평균유속 계산식"):
-        st.latex(FLOW)
-        st.latex(r"V=\frac{Q}{\pi(R_o^2-R_i^2)}")
-        st.caption("속도를 환형 단면 전체에 적분해 Q를 구하고 유동 단면적으로 나누어 V를 구합니다.")
     with st.expander("계산 결과 검증 보고서"):
         show_numerical_verification(result)
 

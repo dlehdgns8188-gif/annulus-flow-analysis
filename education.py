@@ -7,29 +7,19 @@ FLOW = r"Q=\int_{R_i}^{R_o}2\pi r\,u(r)\,dr"
 
 
 def show_principles(page):
-    with st.container(border=True):
-        st.subheader("계산 원리")
-        if page == '기본 유동 해석':
-            st.latex(BALANCE)
-            st.caption("압력에 의한 구동력과 점성력의 평형으로부터 속도분포를 구하고, 미분·적분으로 전단응력과 유량을 계산합니다.")
-        elif page == '형상비 Parameter Sweep':
-            st.latex(r"k=\frac{R_i}{R_o},\qquad A=\pi(R_o^2-R_i^2)")
-            st.caption("형상비 k는 내·외반지름의 비이며, Ro를 고정하면 Ri 증가에 따라 환형 단면적과 간극이 감소합니다. Ro, μ, L, ΔP를 유지한 30개 조건을 비교합니다.")
-            st.caption("현재 Sweep은 Q, V, u_max, r_max를 제공합니다. 전단응력의 조건별 결과는 기본 유동 해석에서 확인할 수 있으며, Sweep 표에 전단응력이 포함된 것은 아닙니다.")
-        elif page == '목표 유량 역설계':
-            st.latex(r"F(R_i)=Q(R_i)-Q_{\mathrm{target}}=0")
-            st.caption("정방향 계산은 Ri에서 Q를 구합니다. 역설계는 Ri를 조정하며 유량 차이가 0이 되는 반지름을 수치적으로 탐색합니다.")
-        elif page == '목표 유량 + 허용 전단응력 설계':
-            st.latex(r"\max\left(|\tau(R_i)|,|\tau(R_o)|\right)\leq\tau_{\mathrm{allow}}")
-            st.caption("먼저 목표유량에 맞는 Ri를 찾고, 그 형상에서 양쪽 벽 전단응력을 계산해 허용값과 비교합니다. 고정 조건을 바꾸어 다른 설계안을 자동 탐색하는 기능은 아닙니다.")
-        else:
-            st.latex(r"u(R_i)=u(R_o)=0,\qquad \left.\frac{du}{dr}\right|_{r_{\max}}=0")
-            st.caption("경계조건과 최대점 조건을 직접 확인하고, 독립 해석식·수치적분·원관 극한과 비교해 계산의 이론 일치성을 평가합니다.")
-        st.caption("r, Ri, Ro, L: 길이 [m] · ΔP=입구압력−출구압력 [Pa] · μ: 점도 [Pa·s] · ρ: 밀도 [kg/m³]. r은 중심축에서 바깥쪽으로 측정하며 현재 입력은 ΔP>0입니다.")
+    explanations = {
+        '기본 유동 해석': '압력차와 점성력의 평형으로 속도분포를 구합니다. 이 분포를 바탕으로 전단응력, 최대유속과 체적유량을 계산합니다.',
+        '형상비 Parameter Sweep': 'Ro, μ, L, ΔP를 고정하고 Ri/Ro를 0.1부터 0.9까지 30개 조건으로 비교합니다. 현재 표는 유량·평균유속·최대유속·최대속도 위치를 제공하며, 전단응력 비교는 포함하지 않습니다.',
+        '목표 유량 역설계': 'Ro, μ, L, ΔP를 고정한 상태에서 내관 반지름을 조정하여 목표유량과 일치하는 조건을 찾습니다.',
+        '목표 유량 + 허용 전단응력 설계': '목표유량을 만족하는 Ri를 먼저 찾은 뒤, 두 벽의 전단응력이 허용값을 넘는지 확인합니다. 다른 운전조건까지 바꾸어 설계안을 자동으로 찾는 기능은 아닙니다.',
+        '모델 검증': '벽면의 속도와 최대유속 위치의 조건을 확인하고, 서로 다른 방법으로 계산한 유량을 비교합니다. 계산의 정확성 확인과 실제 유동 가정의 적합성 판단은 구분합니다.',
+    }
+    st.caption(explanations[page])
 
 
 def show_theory_details(page):
-    with st.expander("상세 이론 및 유도 과정"):
+    with st.expander("상세 이론 및 계산식"):
+        st.caption("r은 중심축으로부터의 거리입니다. Ri·Ro·L [m], ΔP [Pa], μ [Pa·s], ρ [kg/m³]이며 현재 입력은 ΔP>0입니다.")
         st.write("정상·비압축성 Newtonian 유체·축대칭·완전발달 유동이며, 두 벽은 정지하고 no-slip을 만족한다고 가정합니다. 축방향 중력항이 없는 압력구동 모델입니다.")
         st.write("정상 조건으로 시간미분이 사라집니다. 축대칭이면 θ방향 변화가 없고, 완전발달 축방향 유동에서는 u=u(r), 반지름·원주방향 속도는 0이므로 대류항과 축방향 점성미분항이 사라집니다.")
         st.latex(BALANCE)
