@@ -1,0 +1,55 @@
+# Python 가상환경과 캐시
+.venv/
+venv/
+env/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# 비밀정보와 개인 로컬 설정
+.env
+.env.*
+*.env
+.streamlit/secrets.toml
+.streamlit/credentials.toml
+.aws/
+.ssh/
+.codex/
+.agents/
+.idea/
+.vscode/
+*.pem
+*.key
+credentials*.json
+*service-account*.json
+private/
+personal/
+개인정보/
+
+# 자동 생성 결과·임시파일 (실행 시 다시 생성됨)
+results/
+tmp/
+temp/
+*.log
+*.tmp
+*.bak
+*.swp
+~$*
+.DS_Store
+Thumbs.db
+desktop.ini
+build/
+dist/
+*.egg-info/
+
+# 수업 자료와 개인 문서는 공개 저장소에 넣지 않음
+*.pdf
+*.docx
+*.hwp
+*.hwpx
+*.xlsx
+*.pptx

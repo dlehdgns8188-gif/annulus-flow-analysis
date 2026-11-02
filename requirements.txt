@@ -1,0 +1,7 @@
+# Python 3.12 권장. 웹 UI와 기존 터미널 버전의 직접 의존성.
+streamlit>=1.50,<2
+numpy>=2,<3
+scipy>=1.14,<2
+pandas>=2,<4
+altair>=5,<7
+matplotlib>=3.9,<4
