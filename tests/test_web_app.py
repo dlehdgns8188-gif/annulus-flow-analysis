@@ -9,7 +9,7 @@ import re
 import numpy as np
 from streamlit.testing.v1 import AppTest
 import pandas as pd
-from app import description, download_table, format_number, format_quantity
+from app import description, download_table, format_number, format_quantity, near_zero_text
 
 APP = Path(__file__).resolve().parents[1] / "app.py"
 
@@ -139,6 +139,27 @@ class WebAppTests(unittest.TestCase):
             if index in (1, 4):
                 # 화면 표와 계산 원본을 분리해도 다운로드 및 검증은 유지된다.
                 self.assertTrue(app.get("download_button"))
+
+    def test_student_summary_preserves_actual_detail_values(self):
+        app = self.submit(self.open_page())
+        result = app.session_state['computed'][1]
+        rows = result['verification']['extremum']
+        self.assertEqual(near_zero_text(rows[0]), '약 0 s⁻¹')
+        self.assertEqual(near_zero_text(rows[1]), '약 0 Pa')
+        details = next(e for e in app.expander if e.label == '상세 수치 검증')
+        table = details.dataframe[0].value
+        self.assertEqual(table.iloc[2]['실제 계산값'], format_number(rows[0]['value']))
+        self.assertEqual(table.iloc[3]['실제 계산값'], format_number(rows[1]['value']))
+        self.assertIn('허용오차 (절댓값 미만)', table.columns)
+        text = '\n'.join(m.value for m in app.markdown)
+        self.assertIn('최대속도 위치를 기준으로 속도구배가 양수에서 음수로 변함', text)
+        self.assertIn('7.35534 mm', text)
+        self.assertTrue(any('내부 최대점의 이론적 조건을 만족' in s.value for s in app.success))
+
+    def test_failed_value_is_not_summarized_as_zero(self):
+        row = dict(value=1e-7, tolerance=1e-10, status='FAIL', unit='1/s')
+        self.assertNotIn('약 0', near_zero_text(row))
+        self.assertEqual(row['value'], 1e-7)
 
 
 if __name__ == "__main__":

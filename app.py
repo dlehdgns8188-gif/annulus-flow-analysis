@@ -263,57 +263,105 @@ def show_basic(result):
     show_numerical_verification(result)
 
 
+def near_zero_text(row):
+    """판정에 쓰인 기존 허용오차로 화면만 요약한다. 실제 값은 상세 표에 유지."""
+    unit = 's⁻¹' if row['unit'] == '1/s' else row['unit']
+    if row['status'] == 'PASS':
+        return f"약 0 {unit}"
+    return format_quantity(row['value'], unit)
+
+
+def verification_verdict(status, passed, failed, caution=None):
+    message = f"판정: {status} — "
+    if status == 'PASS':
+        st.success(message + passed)
+    elif status == 'CAUTION':
+        st.warning(message + (caution or failed))
+    else:
+        st.error(message + failed)
+
+
 def show_numerical_verification(basic):
     report = basic['verification']
     st.subheader("수치 검증 및 이론 일치성 판정")
+    st.caption("반지름 r은 관 중심축으로부터 측정한 거리이며, 바깥쪽으로 증가합니다. 아래의 ‘약 0’은 계산값이 이론상 0인 조건을 만족할 만큼 작다는 뜻입니다.")
 
-    def rows_table(rows):
+    st.markdown("#### 1. No-slip 경계조건 검증")
+    st.caption("검증 목적: 고정된 내부관과 외부관의 벽면에서 유속이 0인지 확인합니다.")
+    st.write(f"내벽 속도 u(Ri): **{near_zero_text(report['no_slip'][0])}** · 외벽 속도 u(Ro): **{near_zero_text(report['no_slip'][1])}**")
+    st.write("고정된 벽과 접촉한 유체는 벽과 같은 속도를 갖습니다. 따라서 두 벽의 유속이 0이면 이중관의 no-slip 경계조건에 부합합니다.")
+    for row in report['no_slip']:
+        verification_verdict(row['status'], f"{row['label']}가 0에 매우 가까워 해당 벽의 no-slip 경계조건을 만족합니다.",
+                             f"{row['label']}가 0에서 벗어나 해당 벽의 no-slip 경계조건을 만족하지 못했습니다.")
+
+    st.markdown("#### 2. 최대속도 위치 검증")
+    st.caption("검증 목적: 계산된 최대속도 위치에서 속도구배와 전단응력이 0인지 확인합니다.")
+    st.write(f"최대속도 위치: **{format_quantity(report['r_max'] * 1000, 'mm')}** (중심축 기준)")
+    st.write(f"속도구배 du/dr: **{near_zero_text(report['extremum'][0])}** · 전단응력 τ: **{near_zero_text(report['extremum'][1])}**")
+    change = "최대속도 위치를 기준으로 속도구배가 양수에서 음수로 변함" if report['direction'] > 0 else "극값 위치를 기준으로 속도구배가 음수에서 양수로 변함"
+    st.write(f"속도분포 확인: {change} — {'확인됨' if report['location_ok'] else '확인되지 않음'}")
+    st.write("최대속도 위치에서는 유속이 증가하다가 감소하는 방향으로 바뀌므로 속도구배 du/dr이 0이 됩니다. 뉴턴 유체의 전단응력은 τ = μ(du/dr)이므로 이 위치에서 전단응력도 0이 됩니다.")
+    maximum_ok = report['location_ok'] and all(row['status'] == 'PASS' for row in report['extremum'])
+    verification_verdict('PASS' if maximum_ok else 'FAIL',
+                         "계산 결과 두 값이 모두 0에 매우 가깝고 속도구배의 부호도 바뀌므로, 내부 최대점의 이론적 조건을 만족합니다.",
+                         "속도구배·전단응력 또는 최대점 위치 조건을 만족하지 못했습니다. 상세 계산값을 확인하세요.")
+    st.caption("최대속도 위치는 속도구배가 0이 되는 위치를 수치적으로 계산한 값입니다. 원통좌표의 반지름 의존성과 ln(r) 항으로 인해 속도분포가 산술중간점에 대해 대칭이 아니므로 최대점도 단순 중간점과 다릅니다.")
+
+    st.markdown("#### 3. 체적유량 검증")
+    st.caption("검증 목적: 속도분포를 수치적분한 유량이 독립적인 해석식으로 구한 유량과 일치하는지 확인합니다.")
+    st.write(f"해석 유량: **{format_quantity(report['Q_analytical'], 'm³/s')}** · 수치적분 유량: **{format_quantity(report['Q_numerical'], 'm³/s')}**")
+    if report['relative_error'] is not None:
+        error = '약 0 %' if report['relative_error']*100 < 1e-9 else format_quantity(report['relative_error']*100, '%')
+        st.write(f"두 유량의 상대오차: **{error}** (실제 오차는 상세 표에서 확인)")
+    else:
+        st.write("상대오차: 해석 유량이 0이므로 정의할 수 없음")
+    st.write("유량은 각 반지름 위치의 유속을 환형 단면 전체에 걸쳐 합한 값입니다. 두 방법의 유량이 일치하면 속도분포를 단면 적분하는 계산이 해석식과 일관됨을 확인할 수 있습니다.")
+    verification_verdict(report['flow_status'],
+                         "수치적분 유량과 해석 유량의 차이가 충분히 작아 두 계산 방법이 같은 유량을 나타냅니다.",
+                         "유량 비교 조건을 만족하지 못했습니다. 매우 좁은 간극에서의 계산 정밀도 등을 상세 검증에서 확인하세요.",
+                         "유량이 매우 작아 두 값의 차이만으로 정확성을 확정하기 어렵습니다. 이론과의 일치 여부에 주의가 필요합니다.")
+
+    st.markdown("#### 4. 벽면 전단응력과 힘의 방향 검증")
+    st.caption("검증 목적: 두 벽의 전단응력 부호와 벽이 유체에 주는 힘의 방향이 속도분포와 일관되는지 확인합니다.")
+    def sign_text(number):
+        return '양수' if number > 0 else '음수' if number < 0 else '0'
+    for i, wall in enumerate(('내벽', '외벽')):
+        st.write(f"{wall}: 속도구배 **{sign_text(report['wall_gradients'][i])}**, 전단응력 **{format_quantity(report['wall_stresses'][i], 'Pa')}**, 벽이 유체에 주는 축방향 힘/면적 **{format_quantity(report['wall_tractions'][i], 'Pa')}**")
+    st.write("양의 압력차에서는 내벽에서 바깥쪽으로 유속이 증가하고 외벽에 가까워지면 감소하므로 전단응력 성분 τ_rz의 부호가 서로 다릅니다. 실제 벽면 힘은 각 벽의 법선 방향까지 고려하므로 두 벽 모두 유동에 저항하며, 압력차가 반대이면 응력과 힘의 부호도 반전됩니다.")
+    verification_verdict('PASS' if report['sign_ok'] else 'FAIL',
+                         "속도구배와 전단응력의 부호가 일관되고, 두 벽의 힘이 모두 유동을 방해하는 방향이므로 물리적 방향 관계를 만족합니다.",
+                         "속도구배·전단응력과 벽면 저항 방향의 관계를 만족하지 못했습니다.")
+
+    st.markdown(f"**5. 종합 검증 결과: {report['overall']}**")
+    verification_verdict(report['overall'],
+                         "벽면 경계조건, 내부 최대점, 유량 일치와 벽면 힘의 방향이 모두 이론적 조건에 부합합니다.",
+                         "한 가지 이상의 이론적 조건을 만족하지 못했습니다. 위 항목별 판정을 확인하세요.",
+                         "일부 결과는 수치 정밀도 때문에 이론과의 일치를 확정하기 어렵습니다.")
+    st.caption("이 판정은 계산과 이론의 일치 여부를 뜻하며, 실제 유동이 층류·완전발달 상태임을 보장하지 않습니다.")
+    st.write(f"유동 조건 참고: 환형 유로의 수력직경 Dh=2(Ro−Ri)로 구한 Re는 {format_number(basic['Re'])}이며 층류 예비 판정은 {basic['laminar_status']}입니다. 원관 기준을 참고한 판정으로 Annulus의 정확한 전이 기준은 아닙니다.")
+
+    with st.expander("상세 수치 검증"):
+        st.markdown("**벽면 및 최대점의 실제 계산값**")
         st.dataframe(pd.DataFrame([{
-            '검증 항목': row['label'], '계산값': format_number(row['value']),
+            '검증 항목': row['label'], '실제 계산값': format_number(row['value']),
             '단위': row['unit'], '허용오차 (절댓값 미만)': format_number(row['tolerance']),
             '판정': row['status'],
-        } for row in rows]), hide_index=True, width='stretch')
-
-    with st.expander("1. 이중 No-slip 경계조건 검증", expanded=True):
-        rows_table(report['no_slip'])
-        st.caption("속도분포식을 Ri와 Ro에서 각각 직접 평가합니다. |u| < 1 × 10⁻⁹ m/s.")
-    with st.expander("2. 최대속도 위치 극값 검증"):
-        metrics([('최대속도 위치 r_max [m]', report['r_max'], False)])
-        rows_table(report['extremum'])
-        st.write(f"내부 위치와 양쪽 도함수의 유동방향 기준 + → − 변화: {'PASS' if report['location_ok'] else 'FAIL'}")
-        st.caption("r_max는 해석적 도함수의 brentq 근입니다. 기울기는 1×10⁻¹⁰ 1/s, 전단응력은 1×10⁻¹² Pa의 절대 기준에 각 벽값 최대 절댓값의 10⁻¹⁰배를 더해 스케일을 고려합니다.")
-    with st.expander("3. 체적유량 해석해·수치해 비교"):
-        metrics([('해석식 Q_analytical [m³/s]', report['Q_analytical'], True),
-                 ('수치적분 Q_numerical [m³/s]', report['Q_numerical'], True),
-                 ('유량 절대오차 [m³/s]', report['absolute_error'], True)])
+        } for row in report['no_slip'] + report['extremum']]), hide_index=True, width='stretch')
+        st.caption("No-slip: |u| < 10⁻⁹ m/s. 속도구배 허용오차는 10⁻¹⁰ 1/s에 벽면 기울기 최대 절댓값의 10⁻¹⁰배, 응력 허용오차는 10⁻¹² Pa에 벽면 응력 최대 절댓값의 10⁻¹⁰배를 더합니다.")
+        metrics([('유량 절대오차 [m³/s]', report['absolute_error'], True)])
         if report['relative_error'] is not None:
             metrics([('상대오차 [%]', report['relative_error']*100, True)])
-        else:
-            st.warning("해석 유량이 0이므로 상대오차를 정의할 수 없습니다. 절대오차만으로 정확도를 확정하지 않습니다.")
-        st.write(f"적분 방법: {report['method']}")
-        st.write(f"체적유량 검증: **{report['flow_status']}** · 상대오차 0.01% 미만")
-        st.caption("해석 유량은 독립적인 직접 적분식입니다. 상대오차 = |수치해 − 해석해| / |해석해| × 100. 기존 quad 설정은 epsabs=10⁻¹⁵ m³/s, epsrel=10⁻¹⁰입니다.")
-        if report['tiny_flow']:
-            st.warning("극소 유량입니다. 간극이 매우 좁으면 기존 해석식의 항끼리 상쇄되어 정밀도가 저하될 수 있고, 적분의 절대오차 요청도 유량에 비해 큽니다. 상대오차가 작아도 CAUTION이며, 허용오차를 넘으면 FAIL입니다.")
-    with st.expander("4. 벽면 전단응력 부호 및 물리적 해석"):
-        records=[]
-        for i, wall in enumerate(('내벽', '외벽')):
-            records.append({'위치': wall, 'du/dr [1/s]': format_number(report['wall_gradients'][i]),
-                            'τ_rz = μ du/dr [Pa]': format_number(report['wall_stresses'][i]),
-                            '벽이 유체에 주는 t_z [Pa]': format_number(report['wall_tractions'][i])})
-        st.dataframe(pd.DataFrame(records), hide_index=True, width='stretch')
-        st.write(f"압력차 방향 기준 기울기·벽면 저항 방향 검증: **{'PASS' if report['sign_ok'] else 'FAIL'}**")
-        st.write("r은 중심축에서 바깥쪽, +z는 입구에서 출구 방향입니다. ΔP>0이면 내벽에서 바깥쪽으로 속도가 증가하고 외벽으로 갈수록 감소하므로 du/dr 및 τ_rz의 부호가 서로 다릅니다. 압력차를 반대로 하면 이 부호도 반전됩니다.")
-        st.write("유체영역의 외향법선은 내벽 n_r=−1, 외벽 n_r=+1입니다. 벽이 유체에 주는 축방향 접선력/면적은 t_z=(σ·n)_z이므로 내벽은 −τ_rz(Ri), 외벽은 +τ_rz(Ro)입니다. 따라서 두 벽의 힘은 모두 유동을 방해하며, τ_rz 부호가 다른 것이 한 벽이 유체를 가속한다는 뜻은 아닙니다.")
-    st.markdown(f"**5. 종합 검증 결과: {report['overall']}**")
-    st.caption("종합 판정은 경계조건·극값·유량 비교·벽면 방향 검증을 묶은 것입니다. 실제 유동의 층류·완전발달 여부를 보장하지 않습니다.")
-    with st.expander("계산 결과의 물리적 해석", expanded=True):
-        st.write("① 고정된 두 벽의 no-slip 조건으로 벽면 속도는 0입니다. 압력차에 의해 내부에서 유체가 흐르며, 현재 양의 압력차 조건에서는 내부에 최대속도가 나타납니다.")
-        st.write("② 원통좌표 운동량식의 반지름 의존성과 ln(r) 항 때문에 속도분포는 산술중간점에 대해 대칭이 아닙니다. 내·외벽의 곡률 차이가 반영되므로 최대속도 위치도 단순 중간점과 다릅니다.")
-        st.write("③ 매끄러운 내부 최대점에서는 du/dr=0입니다. Newtonian 유체의 τ_rz=μ du/dr 관계에 따라 그 위치의 전단응력도 0입니다.")
-        st.write("④ 내벽과 외벽에서 속도구배 방향이 달라 τ_rz 부호도 다릅니다. 실제 벽면 힘은 각 벽의 법선 방향까지 고려해야 하며 두 벽 모두 유동에 저항합니다.")
-        st.write(f"⑤ Dh=2(Ro−Ri)를 사용한 Re={format_number(basic['Re'])}이며 판정은 {basic['laminar_status']}입니다. Re<2000은 PASS, 2000≤Re≤4000은 CAUTION, Re>4000은 FAIL인 기존 기준을 적용합니다.")
-        st.caption("원관 기준을 참고한 예비 판정으로, Annulus의 정확한 전이점은 형상비와 교란에 따라 달라집니다. 전이·높은 Re에서는 층류식 계산값이 실제 유동을 예측한다고 단정하지 않습니다.")
+        st.write(f"수치적분 방법: {report['method']}. 설정: epsabs=10⁻¹⁵ m³/s, epsrel=10⁻¹⁰.")
+        st.write("유량 상대오차 = |Q_numerical − Q_analytical| / |Q_analytical| × 100. 판정은 0.01% 미만입니다. |Q_analytical|≤10⁻¹⁵ m³/s에서는 상대오차가 작더라도 CAUTION이며 기준 초과는 FAIL입니다.")
+        st.write("간극이 극도로 좁으면 해석식의 큰 항끼리 상쇄되어 유효숫자를 잃을 수 있습니다. 극소 유량은 적분의 절대오차 설정과도 비교해야 하므로 단순한 두 값의 근접만으로 정확도를 확정하지 않습니다.")
+        st.write("최대점은 해석적 도함수의 brentq 근을 구해 계산합니다. 계산된 위치가 Ri와 Ro 사이에 있고 그 양쪽의 속도구배 부호가 바뀌는지도 확인합니다.")
+        st.write("유체영역의 외향법선은 내벽 n_r=−1, 외벽 n_r=+1입니다. 벽이 유체에 주는 힘/면적은 t_z=(σ·n)_z이므로 내벽 −τ_rz(Ri), 외벽 +τ_rz(Ro)입니다.")
+        st.dataframe(pd.DataFrame({'벽면': ['내벽','외벽'],
+                                  'du/dr [s⁻¹]': [format_number(v) for v in report['wall_gradients']],
+                                  'τ_rz [Pa]': [format_number(v) for v in report['wall_stresses']],
+                                  't_z [Pa]': [format_number(v) for v in report['wall_tractions']]}), hide_index=True, width='stretch')
+        st.caption("기존 Re 기준: Re<2000 PASS, 2000≤Re≤4000 CAUTION, Re>4000 FAIL. 형상비·입구 교란에 따라 실제 전이는 달라질 수 있습니다.")
+
 
 
 def download_table(frame, filename, label="전체 결과 CSV 다운로드"):
@@ -374,17 +422,23 @@ def show_verification(report):
     basic = report["basic"]
     show_numerical_verification(basic)
     st.subheader("원관 Poiseuille 극한 검증")
+    st.caption("검증 목적: 내부관이 매우 가늘어질 때 Annulus 유량이 같은 외반지름의 원관 Poiseuille 유량에 접근하는지 확인합니다.")
     metrics([("원관 기준유량 Q_pipe [m³/s]", report["Q_pipe"], True)])
     table = pd.DataFrame(report["limit_table"], columns=["형상비 Ri/Ro", "Ri [m]", "Annulus Q [m³/s]",
                                                        "원관 Q [m³/s]", "상대오차"])
     table["상대오차 [%]"] = table.pop("상대오차") * 100
-    display_table(table)
-    st.caption(DESCRIPTIONS["상대오차"])
-    st.success("원관 극한 PASS · 형상비가 0에 가까워질수록 원관 유량과의 상대오차가 감소합니다.")
-    st.caption("로그항 때문에 접근이 느립니다. 작은 양의 내반지름에서도 차이가 남으며, 이 차이는 수치적분 오차가 아닙니다. Ri=0은 대입하지 않습니다.")
+    first, last = report['limit_table'][[0, -1]]
+    st.write(f"계산 결과: Ri/Ro가 {format_number(first[0])}에서 {format_number(last[0])}로 감소할 때 원관 대비 상대오차는 {format_quantity(first[4]*100, '%')}에서 {format_quantity(last[4]*100, '%')}로 감소했습니다.")
+    st.write("내부관의 반지름이 0에 가까워지면 유로 형상이 원관에 접근하므로 유량도 원관 해에 가까워져야 합니다. 다만 로그항 때문에 접근이 느려 작은 양의 내반지름에서도 차이가 남으며, 이는 수치적분과 해석식 사이의 오차와는 다릅니다.")
+    verification_verdict('PASS' if report['decreasing'] else 'FAIL',
+                         "내반지름 감소에 따라 원관 유량과의 차이가 줄어들어 원관 극한의 이론적 경향을 만족합니다. 원관과 완전히 같은 값에 도달했다는 뜻은 아닙니다.",
+                         "내반지름 감소에 따른 원관 유량 접근 경향을 확인하지 못했습니다.")
+    with st.expander("상세 수치 검증 · 원관 극한"):
+        display_table(table)
+        st.caption("Ri=0을 직접 대입하지 않고 5개의 양의 형상비에서 상대오차가 순차적으로 감소하는지 확인합니다.")
     download_table(table, "pipe_limit_verification.csv", "원관 극한 검증 CSV 다운로드")
     st.success("기본값 역설계 재현 PASS · 기존 기준 조건에서 Ri ≈ 0.005 m (5 mm)")
-    with st.expander("층류 판정과 상세 검증값"):
+    with st.expander("상세 수치 검증 · 층류 판정과 위치 비교"):
         laminar_status(basic)
         st.write("Re < 2000: PASS · 2000 ≤ Re ≤ 4000: CAUTION · Re > 4000: FAIL")
         metrics([("du/dr at r_max [1/s]", basic["gradient_at_max"], True),
